@@ -17,15 +17,16 @@ def show_Img(title,arr,x,y):
     #cv.waitKey() # waits until a key is pressed
     #cv.destroyAllWindows() # destroys the window showing image   
 
-def bitmap(x):  #bit map for -255 pixel values
-    binary = bin(x)[2:] # remove 'b'  
+def bitmap(x):  #bit map for 0-255 pixel values
+    #binary = bin(x)[2:] # remove 'b'  
     #print(binary)
+    binary = '{0:08b}'.format(x)
     rsb = len(binary)-4
     lsbBin = binary[0:rsb]+"0000"
     return int(lsbBin,2)
 
 def Lbitmap(x):  #bit map for -15 pixel values
-    binary = bin(x)[2:] # remove 'b'  
+    binary = '{0:08b}'.format(x) 
     #print(binary)
     rsb = len(binary)-4
     lsbBin = binary[rsb:len(binary)]+"0000"
@@ -37,7 +38,8 @@ def bitmap_decode(x):   #return pixel value and how many occurances 1-15
     start = len(binary)-4
     rsb = binary[start:start+4] #return a value 1-15 for how many time the value occured
     rsb = int(rsb,2)
-
+    
+    #print(lsb,rsb)
     return lsb,rsb
 
 def Lbitmap_decode(x):   #return lower pixel value and how many occurances 1-15
@@ -125,6 +127,7 @@ def RLE(data, Lower = None):
     data= data.flatten()
     b_map = []
     e_map = []
+    #for i in range(512):
     for i in range(len(data)):
         if Lower == True:
             b_map.append(Lbitmap(data[i]))
@@ -145,6 +148,7 @@ def RLE(data, Lower = None):
             else:
                 break
         i = j+1
+        
         if count <=15:
             e_map.append(x+count)
         else:
@@ -156,15 +160,71 @@ def RLE(data, Lower = None):
                 elif count<=15:
                     e_map.append(x+count)
                     break
-    #
-    #e_map = np.array(e_map) 
-   
+
     return e_map
+
+def cRLE(data, tx,Lower = None):
+    data= data.flatten()
+    b_map = []
+    e_map = []
+    #print(len(data))
+    for i in range(len(data)):
+        if Lower == True:
+            b_map.append(Lbitmap(data[i]))
+        else:
+            b_map.append(bitmap(data[i]))
+    b_map = np.array(b_map) 
+    #print(b_map.shape)     #shape of bitmap is correct
+
+    i= 0
+    n = b_map.shape[0]
+    #print(n)
+    totcnt = 0
+    aptcnt =0
+    highcnt =0
+    while i<=n-1:
+        count = 1
+        x = b_map[i]
+        j = i
+        
+        while j<n-1:
+            if (b_map[j]==b_map[j+1]):
+                count +=1
+                j = j+1
+            else:
+                break
+        
+        totcnt += count
+        if count < tx:   
+            e_map.append(x+count)
+            aptcnt+=1
+        else:
+            temp_cnt = count
+            while(temp_cnt>tx):
+                e_map.append(x+(tx-1))
+                aptcnt+=1
+                temp_cnt -= (tx-1)
+            #print(temp_cnt)
+            e_map.append(x+temp_cnt)
+            aptcnt+=1
+
+        
+        
+        #if count > highcnt: highcnt = count
+        i = j+1
+     
+    #print(totcnt)
+    #print("aptcnt:"+str(aptcnt))    
+    #print("highcnt:"+str(highcnt))  
+            
+
+    return e_map   
 
 def RLD(data,sz, Lower = None):
     n = len(data)
     arr = []
     i= 0
+    
     while i < n-1:
         if Lower == True:
             a,b = Lbitmap_decode(data[i])
@@ -180,30 +240,62 @@ def RLD(data,sz, Lower = None):
     
     return arr
   
+def cRLD(data,sz, x, Lower = None):
+    n = len(data)
+    #print("aptlen",str(n))
+    arr = []
+    i= 0
+    totcnt = 0
+    aptcnt = 0
+    while i < n-1:
+        if data[i]>x:
+            if Lower == True:
+                a,b = Lbitmap_decode(data[i])
+                
+            else:
+                a = x
+                b = data[i]-x
+        else:
+            a = 0
+            b = data[i]
+        
+        for _ in range(b):
+            arr.append(a)
+            totcnt += 1
+        aptcnt += b
+        i+=1
+    if len(arr) < sz:
+        pad = sz-len(arr)
+        for _ in range(pad):
+            arr.append(0)
+    #print(totcnt)
+    #print("aptcnt:"+str(aptcnt))  
+
+    return arr
+
 def RLE_BitSplice(data):
     a,b = data.shape
-    sz = a*b
     lst = []
     for i in range(0, a):
         for j in range(0, b):
             lst.append(np.binary_repr(data[i][j] ,width=8))
     
+    #before rle
     #Seperating bits into different bit arrays
-  
-    eight_bit = RLE((np.array([int(i[0]) for i in lst],dtype = np.uint8) * 128))
-    seven_bit = RLE((np.array([int(i[1]) for i in lst],dtype = np.uint8) * 64))
-    six_bit = RLE((np.array([int(i[2]) for i in lst],dtype = np.uint8) * 32))
-    five_bit = RLE((np.array([int(i[3]) for i in lst],dtype = np.uint8) * 16))
-    four_bit = RLE((np.array([int(i[4]) for i in lst],dtype = np.uint8) * 8),True)
-    three_bit = RLE((np.array([int(i[5]) for i in lst],dtype = np.uint8) * 4),True)
-    two_bit = RLE((np.array([int(i[6]) for i in lst],dtype = np.uint8) * 2),True)
-    one_bit = RLE((np.array([int(i[7]) for i in lst],dtype = np.uint8) * 1),True)
+    #t8 = (np.array([int(i[0]) for i in lst],dtype = np.uint8) * 128).reshape(a,b)
+    #cv.imwrite("RLC_BP_t8_output.png", t8)
+    
+    eight_bit = cRLE((np.array([int(i[0]) for i in lst],dtype = np.uint8) * 128).reshape(a,b),128)
+    seven_bit = cRLE((np.array([int(i[1]) for i in lst],dtype = np.uint8) * 64).reshape(a,b),64)
+    six_bit = cRLE((np.array([int(i[2]) for i in lst],dtype = np.uint8) * 32).reshape(a,b),32)
+    five_bit = cRLE((np.array([int(i[3]) for i in lst],dtype = np.uint8) * 16).reshape(a,b),16)
+    four_bit = cRLE((np.array([int(i[4]) for i in lst],dtype = np.uint8) * 8).reshape(a,b),8,True)
+    three_bit = cRLE((np.array([int(i[5]) for i in lst],dtype = np.uint8) * 4).reshape(a,b),4,True)
+    two_bit = cRLE((np.array([int(i[6]) for i in lst],dtype = np.uint8) * 2).reshape(a,b),2,True)
+    one_bit = RLE((np.array([int(i[7]) for i in lst],dtype = np.uint8) * 1).reshape(a,b),True)
 
     b_lst =[]
-    #textfile = open("a_file.txt", "w")
-    #for element in eight_bit:
-    #    textfile.write(str(element) + " ")
-    #textfile.close()
+   
     b_lst.append(eight_bit)
     b_lst.append(seven_bit)
     b_lst.append(six_bit)
@@ -212,23 +304,19 @@ def RLE_BitSplice(data):
     b_lst.append(three_bit)
     b_lst.append(two_bit)
     b_lst.append(one_bit)
-
+   
     return b_lst
 
 def RLD_BP(b_list,a,b):
     sz=a*b
-    eight = RLD(b_list[0],sz)
-    #textfile = open("b_file.txt", "w")
-    #for element in eight:
-    #    textfile.write(str(element) + " ")
-    #textfile.close()
-    seven = RLD(b_list[1],sz) 
-    six = RLD(b_list[2],sz) 
-    five = RLD(b_list[3],sz)
-    four = RLD(b_list[4],sz,True)
-    three = RLD(b_list[5],sz,True) 
-    two = RLD(b_list[6],sz,True) 
-    one = RLD(b_list[7],sz,True)
+    eight = cRLD(b_list[0],sz,128)
+    seven = cRLD(b_list[1],sz,64) 
+    six = cRLD(b_list[2],sz,32) 
+    five = cRLD(b_list[3],sz,16)
+    four = cRLD(b_list[4],sz,8,True)
+    three = cRLD(b_list[5],sz,4,True) 
+    two = cRLD(b_list[6],sz,2,True) 
+    one = cRLD(b_list[7],sz,1,True)
     
     new_image = np.zeros([a, b])
     i = 0
